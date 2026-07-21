@@ -346,7 +346,7 @@ You will go deeper on this in your model card.
 
 ---
 
-## Reflection
+<!-- ## Reflection
 
 Read and complete `model_card.md`:
 
@@ -355,7 +355,7 @@ Read and complete `model_card.md`:
 Write 1 to 2 paragraphs here about what you learned:
 
 - about how recommenders turn data into predictions
-- about where bias or unfairness could show up in systems like this
+- about where bias or unfairness could show up in systems like this -->
 
 
 
