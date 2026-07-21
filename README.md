@@ -156,6 +156,172 @@ Each recommendation shows the song title and artist, the final score, and the sp
 
 ---
 
+## Adversarial / Edge-Case Evaluation
+
+To stress-test the scoring logic, I ran six deliberately "tricky" profiles with
+`python -m src.main adversarial`. Each targets a specific seam in `score_song()`.
+The raw terminal output is pasted below.
+
+**1. Conflicted: Sad but Hyped** — a low-energy mood label paired with a high energy target. Because mood and energy are scored as independent, un-reconciled terms, the lowest-energy song in the catalog wins on mood alone despite the "hyped" target.
+
+```
+============================================================
+  CONFLICTED: SAD BUT HYPED                                 
+============================================================
+Profile: mood=melancholic | energy=0.9
+
+Top 5 recommendations:
+
+1. Elegy in Grey - The Camerata Nord            score 0.40
+      * fits a mood you like (melancholic) (+0.30)
+
+2. Storm Runner - Voltline                      score 0.30
+      * energy level is close to what you want (+0.30)
+
+3. Iron Verdict - Ashen Crown                   score 0.29
+      * energy level is close to what you want (+0.29)
+
+4. Gym Hero - Max Pulse                         score 0.29
+      * energy level is close to what you want (+0.29)
+
+5. Skyline Ignition - Pulse Theory              score 0.29
+      * energy level is close to what you want (+0.29)
+```
+
+**2. Ghost Preference (unknown mood)** — `mood="sad"` does not exist in the dataset, so the mood term silently contributes nothing and the ranking quietly collapses onto genre + energy. No warning is raised.
+
+```
+============================================================
+  GHOST PREFERENCE (UNKNOWN MOOD)                           
+============================================================
+Profile: genre=pop | mood=sad | energy=0.5
+
+Top 5 recommendations:
+
+1. Sunrise City - Neon Echo                     score 0.40
+      * matches a genre you like (pop) (+0.20)
+
+2. Gym Hero - Max Pulse                         score 0.37
+      * matches a genre you like (pop) (+0.20)
+
+3. Velvet Hours - Marcus Vale                   score 0.29
+      * energy level is close to what you want (+0.29)
+
+4. Island Timing - Coral Sound System           score 0.28
+      * energy level is close to what you want (+0.28)
+
+5. Midnight Coding - LoRoom                     score 0.28
+      * energy level is close to what you want (+0.28)
+```
+
+**3. Case Trap** — the intent obviously matches, but genre/mood matching is case-sensitive string equality, so `"Pop"`/`"Happy"` never match the lowercase data. Notice no genre or mood reasons fire at all.
+
+```
+============================================================
+  CASE TRAP                                                 
+============================================================
+Profile: genre=Pop | mood=Happy | energy=0.8
+
+Top 5 recommendations:
+
+1. Sunrise City - Neon Echo                     score 0.29
+      * energy level is close to what you want (+0.29)
+
+2. Rooftop Lights - Indigo Parade               score 0.29
+      * energy level is close to what you want (+0.29)
+
+3. Concrete Anthem - Rhyme Foundry              score 0.29
+      * energy level is close to what you want (+0.29)
+
+4. Night Drive Loop - Neon Echo                 score 0.28
+      * energy level is close to what you want (+0.28)
+
+5. Storm Runner - Voltline                      score 0.27
+      * energy level is close to what you want (+0.27)
+```
+
+**4. Self-Contradiction** — the same genre is both liked and disliked. Both the +0.20 bonus and the −0.30 penalty fire, netting −0.10, so rock is demoted *below* songs with no signal and never reaches the top 5. The impossible profile is accepted without complaint.
+
+```
+============================================================
+  SELF-CONTRADICTION                                        
+============================================================
+Profile: genres=['rock'] | disliked_genres=['rock'] | energy=0.5
+
+Top 5 recommendations:
+
+1. Velvet Hours - Marcus Vale                   score 0.29
+      * energy level is close to what you want (+0.29)
+
+2. Island Timing - Coral Sound System           score 0.28
+      * energy level is close to what you want (+0.28)
+
+3. Midnight Coding - LoRoom                     score 0.28
+      * energy level is close to what you want (+0.28)
+
+4. Dust on the Dashboard - Hollow Pines         score 0.28
+      * energy level is close to what you want (+0.28)
+
+5. Focus Flow - LoRoom                          score 0.27
+      * energy level is close to what you want (+0.27)
+```
+
+**5. Weight Hacker (out of range)** — energy target is outside [0,1] and the per-user weight is inflated. Nothing validates either input, so scores go deeply negative and the ranking is driven by an unintended side effect of the closeness formula.
+
+```
+============================================================
+  WEIGHT HACKER (OUT OF RANGE)                              
+============================================================
+Profile: energy=5.0 | weights={'energy': 2.0}
+
+Top 5 recommendations:
+
+1. Skyline Ignition - Pulse Theory              score -6.10
+      * a general match for your taste
+
+2. Gym Hero - Max Pulse                         score -6.14
+      * a general match for your taste
+
+3. Iron Verdict - Ashen Crown                   score -6.16
+      * a general match for your taste
+
+4. Storm Runner - Voltline                      score -6.18
+      * a general match for your taste
+
+5. Concrete Anthem - Rhyme Foundry              score -6.30
+      * a general match for your taste
+```
+
+**6. Blank Slate** — no signal at all. Every song scores 0.00, so the tie-break falls to CSV file order — an arbitrary, silent fallback masquerading as a recommendation.
+
+```
+============================================================
+  BLANK SLATE                                               
+============================================================
+Profile: 
+
+Top 5 recommendations:
+
+1. Sunrise City - Neon Echo                     score 0.00
+      * a general match for your taste
+
+2. Midnight Coding - LoRoom                     score 0.00
+      * a general match for your taste
+
+3. Storm Runner - Voltline                      score 0.00
+      * a general match for your taste
+
+4. Library Rain - Paper Lanterns                score 0.00
+      * a general match for your taste
+
+5. Gym Hero - Max Pulse                         score 0.00
+      * a general match for your taste
+```
+
+**Takeaway:** four of these six (case, unknown category, contradiction, out-of-range) fail *silently* — identical clean output, wrong results. The highest-value hardening fixes are: lowercase-normalize genre/mood before matching, warn on unknown categories or contradictory genre lists, and clamp `energy`/weights to valid ranges.
+
+---
+
 ## Experiments You Tried
 
 Use this section to document the experiments you ran. For example:
